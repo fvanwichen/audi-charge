@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#05070C" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="manifest" href="./manifest.json" />
+<link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+<title>Laadwacht</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+
+<!-- three.js via import map (any CDN works on your deployment) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<style>
+  :root {
+    --ink: #05070C;
+    --surface: rgba(18, 24, 38, 0.72);
+    --surface-solid: #121826;
+    --surface-2: #1C2436;
+    --mint: #8E99AD;  /* UI accent — cool steel */
+    --accent-1: #A6B0C2;  /* steel gradient top (lighter) */
+    --accent-2: #5F6A7E;  /* steel gradient bottom (deeper) */
+    --amber: #FF9D54;
+    --alert: #FF5E7A;
+    --text: #EAEFFA;
+    --muted: #7E8AA3;
+    --track: #232C40;
+    --accent: var(--mint);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  html, body { height: 100%; }
+  body {
+    background: var(--ink);
+    color: var(--text);
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    position: fixed; inset: 0;
+  }
+
+  #scene { position: absolute; inset: 0; z-index: 0; }
+  #fallback { position: absolute; inset: 0; z-index: 0; display: none; }
+  body.no3d #fallback { display: block; }
+
+  .fade-black {
+    position: absolute; inset: 0; z-index: 5; background: #000;
+    opacity: 0; pointer-events: none; transition: opacity 700ms ease;
+  }
+  .fade-black.on { opacity: 1; }
+
+  .ui { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column;
+        padding: max(20px, env(safe-area-inset-top)) 20px max(22px, env(safe-area-inset-bottom));
+        pointer-events: none; }
+  .ui > * { pointer-events: auto; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between;
+            font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+  .car-id { display: flex; align-items: center; gap: 9px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--track);
+         transition: background .4s ease, box-shadow .4s ease; }
+  body.charging .dot { background: var(--mint); box-shadow: 0 0 12px var(--mint); animation: breathe 2.4s ease-in-out infinite; }
+  body.done .dot { background: var(--amber); box-shadow: 0 0 12px var(--amber); }
+  @keyframes breathe { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .settings-btn { background: none; border: none; color: var(--muted); font-family: inherit;
+                  font-size: 12px; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; padding: 6px; }
+  .settings-btn:active { color: var(--text); }
+
+  .spacer { flex: 1; }
+
+  .readout { text-align: center; margin-bottom: 8px; min-height: 96px;
+             display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; }
+  .state-word { font-size: 12px; letter-spacing: .24em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .big-time { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 58px; line-height: 1;
+              letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+              background: linear-gradient(175deg, var(--accent-1), var(--accent-2));
+              -webkit-background-clip: text; background-clip: text; color: transparent;
+              filter: drop-shadow(0 2px 18px color-mix(in srgb, var(--accent) 28%, transparent)); }
+  .full-line { font-size: 15px; color: var(--text); }
+  .full-line b { font-family: "JetBrains Mono", monospace; color: var(--accent); }
+  .full-line .sub { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .move-head h1 { font-size: 30px; font-weight: 700; color: var(--amber); line-height: 1.08; }
+  .move-head p { color: var(--muted); font-size: 14px; margin-top: 6px; }
+
+  .panel { background: var(--surface); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+           border: 1px solid rgba(255,255,255,0.06); border-radius: 24px; padding: 20px; }
+
+  .dial-label { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+  .dial-label span { font-size: 13px; color: var(--muted); letter-spacing: .04em; }
+  .dial-label b { font-family: "JetBrains Mono", monospace; font-size: 30px; color: var(--mint);
+                  font-variant-numeric: tabular-nums; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 8px; border-radius: 99px;
+                      background: var(--track); outline: none; margin: 6px 0 30px; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; border-radius: 50%;
+      background: var(--mint); cursor: pointer; box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 14%, transparent), 0 4px 14px rgba(0,0,0,.4); }
+  input[type=range]::-moz-range-thumb { width: 30px; height: 30px; border: none; border-radius: 50%; background: var(--mint); cursor: pointer; }
+
+  .action { width: 100%; border: none; cursor: pointer; font-family: inherit; font-weight: 700; font-size: 17px;
+            color: #fff; background: linear-gradient(180deg, var(--accent-1), var(--accent-2)); border-radius: 16px; padding: 19px;
+            transition: transform .12s ease, background .4s ease, box-shadow .4s ease;
+            box-shadow: 0 10px 26px -16px rgba(0,0,0,.7); }
+  .action:active { transform: scale(.975); }
+  body.done .action { color: #2a1400; background: linear-gradient(180deg, #FFB463, #E07E2C);
+                      box-shadow: 0 10px 26px -16px color-mix(in srgb, var(--amber) 70%, transparent);
+                      animation: nudge 1.8s ease-in-out infinite; }
+  @keyframes nudge { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+
+  .credit { text-align: center; font-size: 10.5px; color: rgba(126,138,163,.6); letter-spacing: .05em; margin-top: 12px; }
+
+  .sheet { position: fixed; inset: 0; background: rgba(4,6,11,.72); backdrop-filter: blur(6px);
+           display: none; align-items: flex-end; justify-content: center; z-index: 30; }
+  .sheet.open { display: flex; }
+  .sheet-card { width: 100%; max-width: 460px; background: var(--surface-solid); border: 1px solid var(--surface-2);
+                border-radius: 24px 24px 0 0; padding: 26px 22px max(26px, env(safe-area-inset-bottom)); }
+  .sheet-card h2 { font-size: 18px; margin-bottom: 4px; }
+  .sheet-card .hint { color: var(--muted); font-size: 13px; margin-bottom: 20px; line-height: 1.5; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0;
+         border-top: 1px solid var(--surface-2); }
+  .row .name { font-size: 15px; }
+  .stepper { display: flex; align-items: center; gap: 12px; }
+  .stepper .val { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 18px; color: var(--mint);
+                  min-width: 62px; text-align: center; font-variant-numeric: tabular-nums; }
+  .step-btn { width: 42px; height: 42px; border-radius: 12px; background: var(--surface-2); border: none;
+              color: var(--text); font-size: 22px; cursor: pointer; font-family: inherit; }
+  .step-btn:active { background: var(--track); }
+  .sheet-close { width: 100%; margin-top: 22px; padding: 15px; border-radius: 14px; background: var(--surface-2);
+                 border: none; color: var(--text); font-family: inherit; font-weight: 700; font-size: 15px; cursor: pointer; }
+  .note { font-size: 11.5px; color: var(--muted); margin-top: 16px; line-height: 1.5; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+</style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <svg id="fallback" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <radialGradient id="glowg" cx="50%" cy="40%" r="60%">
+        <stop offset="0%" stop-color="#0d1526"/><stop offset="100%" stop-color="#05070c"/>
+      </radialGradient>
+      <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#20242e"/><stop offset="100%" stop-color="#0a0b0f"/>
+      </linearGradient>
+    </defs>
+    <rect width="400" height="300" fill="url(#glowg)"/>
+    <ellipse cx="200" cy="232" rx="150" ry="16" fill="#000" opacity="0.55"/>
+    <g id="fbcar">
+      <path d="M70 210 L96 150 H250 L300 175 H330 a14 14 0 0 1 14 14 v18 a8 8 0 0 1-8 8 H72 a8 8 0 0 1-8-8 v-18 a14 14 0 0 1 6-8Z" fill="url(#body)"/>
+      <path d="M112 152 H176 V196 H84 Z" fill="#0a1220" opacity="0.9"/>
+      <path d="M186 152 H244 L286 190 H186 Z" fill="#0a1220" opacity="0.9"/>
+      <circle cx="126" cy="216" r="22" fill="#0a0b0f" stroke="#2a3242" stroke-width="3"/><circle cx="126" cy="216" r="8" fill="#151b28"/>
+      <circle cx="292" cy="216" r="22" fill="#0a0b0f" stroke="#2a3242" stroke-width="3"/><circle cx="292" cy="216" r="8" fill="#151b28"/>
+      <rect id="fbport" x="66" y="184" width="10" height="10" rx="2" fill="#F5C518" opacity="0"/>
+    </g>
+    <line id="fbcable" x1="20" y1="250" x2="66" y2="189" stroke="#F5C518" stroke-width="4" stroke-linecap="round" opacity="0"/>
+    <g id="fbrings" opacity="0">
+      <image id="fblogo" x="110" y="120" width="180" height="72" preserveAspectRatio="xMidYMid meet"/>
+    </g>
+  </svg>
+
+  <div class="fade-black" id="fadeBlack"></div>
+
+  <div class="ui">
+    <div class="topbar">
+      <span class="car-id"><span class="dot"></span> Audi Q3 · Straat</span>
+      <button class="settings-btn" id="openSettings">Instellingen</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="readout" id="readout"></div>
+    <div class="panel" id="panel"></div>
+    <div class="credit" id="credit"></div>
+  </div>
+
+  <div class="sheet" id="sheet">
+    <div class="sheet-card">
+      <h2>Instellingen</h2>
+      <p class="hint">De Q3 laadt AC met max 3,6 kW — een snellere paal maakt niet uit. Een volle beurt (0→100%) duurt ±3u45.</p>
+      <div class="row">
+        <span class="name">Volle laadtijd (0→100%)</span>
+        <div class="stepper">
+          <button class="step-btn" data-k="full" data-step="-15">−</button>
+          <span class="val" id="fullVal">3:45</span>
+          <button class="step-btn" data-k="full" data-step="15">+</button>
+        </div>
+      </div>
+      <div class="row">
+        <span class="name">Doel-lading</span>
+        <div class="stepper">
+          <button class="step-btn" data-k="target" data-step="-5">−</button>
+          <span class="val" id="targetVal">100%</span>
+          <button class="step-btn" data-k="target" data-step="5">+</button>
+        </div>
+      </div>
+      <p class="note">3D-model door 3DCars4U (Sketchfab), CC-BY 4.0.</p>
+      <button class="sheet-close" id="closeSettings">Klaar</button>
+    </div>
+  </div>
+
+<script type="module">
+/* ============================================================
+   CONFIG — tweak these after first load if needed
+   ============================================================ */
+const CONFIG = {
+  // Unzip the Sketchfab glTF download so scene.gltf / scene.bin / textures/
+  // live in a "model" folder next to this file.
+  MODEL_URL: "./model/scene.gltf",
+
+  // Spin the car so its nose points DOWN THE ROAD. This single value fixes BOTH shots:
+  // rear-on for the drive-away, front-on for the return (the cameras sit at opposite ends).
+  // 90 and 270 are the two "down the road" options; this model needs 270.
+  CAR_FACING_DEG: 270,
+
+  // Which material(s) are the car's paint? Leave [] to auto-guess.
+  // First load logs every mesh/material name to the console — add the body one here
+  // (e.g. ["carpaint"]) to force premium black paint.
+  BODY_MATERIAL_NAMES: ["Carpaint_Pearl_Orange"],
+
+  // Flat rest-state logo. Save your image as logo.png next to this file.
+  LOGO_URL: "./logo.png",
+
+  FULL_CHARGE_MIN_DEFAULT: 225, // 3h45 for 0->100%
+  // Web-push public key. Generate once with: npx web-push generate-vapid-keys
+  VAPID_PUBLIC_KEY: "BJHUxY3kYVYQnHOQ1eYzJyPq0WYJYFSnOOdrKjsXF0X9iPrzOkSGoTVp8zxmkYoGMFPOUzEThBjqnG42N9LZoD8",
+  CREDIT: "3D-model: 3DCars4U · Sketchfab · CC-BY 4.0"
+};
+
+/* ---- storage (localStorage on deploy, in-memory in sandboxes) ---- */
+const store = (() => {
+  try { const k="__t"; localStorage.setItem(k,"1"); localStorage.removeItem(k);
+    return { get:k=>{const v=localStorage.getItem(k);return v==null?null:JSON.parse(v);},
+             set:(k,v)=>localStorage.setItem(k,JSON.stringify(v)), del:k=>localStorage.removeItem(k) };
+  } catch(e){ const m={}; return { get:k=>k in m?m[k]:null, set:(k,v)=>m[k]=v, del:k=>{delete m[k];} }; }
+})();
+const K = { SES:"lw.session", FULL:"lw.fullMin", TARGET:"lw.target", LASTPCT:"lw.lastPct" };
+
+const fullMin   = () => store.get(K.FULL)   ?? CONFIG.FULL_CHARGE_MIN_DEFAULT;
+const targetPct = () => store.get(K.TARGET) ?? 100;
+const lastPct   = () => store.get(K.LASTPCT) ?? 40;
+const session   = () => store.get(K.SES);
+
+function phase(){ const s=session(); if(!s) return "idle";
+  return Date.now() >= s.start + s.durationMin*60000 ? "done" : "charging"; }
+function computeDuration(cur,tgt){ return Math.max(1, Math.round((tgt-cur)/100 * fullMin())); }
+
+const pad = n => n<10 ? "0"+n : ""+n;
+const clock = ms => { const d=new Date(ms); return pad(d.getHours())+":"+pad(d.getMinutes()); };
+const remainStr = ms => { if(ms<0)ms=0; const m=Math.ceil(ms/60000); return Math.floor(m/60)+":"+pad(m%60); };
+const fmtHM = min => Math.floor(min/60)+":"+pad(min%60);
+
+/* ============================================================
+   3D stage (graceful fallback)
+   ============================================================ */
+let stage = null;
+const bodyEl = document.body;
+
+async function initStage(){
+  try {
+    const THREE = await import("three");
+    const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
+    const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
+    const { RoomEnvironment } = await import("three/addons/environments/RoomEnvironment.js");
+    stage = build3D(THREE, GLTFLoader, OrbitControls, RoomEnvironment);
+  } catch(e){
+    console.warn("3D unavailable, using fallback:", e);
+    bodyEl.classList.add("no3d");
+    stage = buildFallback();
+  }
+}
+
+function build3D(THREE, GLTFLoader, OrbitControls, RoomEnvironment){
+  const canvas = document.getElementById("scene");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x060a12);
+  scene.fog = new THREE.FogExp2(0x070c16, 0.03);
+
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+  const camera = new THREE.PerspectiveCamera(42, innerWidth/innerHeight, 0.1, 300);
+  const AMBIENT_POS = new THREE.Vector3(5.2, 2.4, 6.4);
+  camera.position.copy(AMBIENT_POS);
+
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.enablePan = false;
+  controls.autoRotate = true; controls.autoRotateSpeed = 0.55;
+  controls.minPolarAngle = 0.6; controls.maxPolarAngle = 1.52;
+  controls.minDistance = 5; controls.maxDistance = 12;
+
+  const rim = new THREE.DirectionalLight(0x9fc4ff, 2.2); rim.position.set(-6,6,-5); scene.add(rim);
+  const key = new THREE.DirectionalLight(0xcfe0ff, 1.7); key.position.set(6,8,5); // cool moonlight
+  key.castShadow = true; key.shadow.mapSize.set(1024,1024);
+  key.shadow.camera.near=1; key.shadow.camera.far=40;
+  key.shadow.camera.left=-10; key.shadow.camera.right=10; key.shadow.camera.top=10; key.shadow.camera.bottom=-10;
+  scene.add(key);
+
+  // ---- the road runs along Z; the car faces -Z. Dutch brick cobblestone surface ----
+  function brickCanvas(mode){ // mode: 'color' | 'bump'
+    const S=256, c=document.createElement("canvas"); c.width=c.height=S; const x=c.getContext("2d");
+    const rows=9, bh=S/rows, bw=S/4;
+    x.fillStyle = mode==="bump" ? "#000000" : "#0a0d14"; x.fillRect(0,0,S,S); // dark mortar joints
+    for (let r=0;r<rows;r++){ const off=(r%2)? bw/2 : 0;
+      for (let k=-1;k<5;k++){
+        const bx=k*bw+off+1.5, by=r*bh+1.5, w=bw-3, h=bh-3;
+        if (mode==="bump"){ const g=150+Math.random()*40|0; x.fillStyle=`rgb(${g},${g},${g})`; }
+        else { const v=52+Math.random()*26|0; x.fillStyle=`rgb(${v-6},${v},${v+16})`; } // cool bluish klinker
+        x.fillRect(bx,by,w,h);
+      }
+    }
+    const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping;
+    t.repeat.set(90,140); t.anisotropy=renderer.capabilities.getMaxAnisotropy(); return t;
+  }
+  const brickMap=brickCanvas("color"), brickBump=brickCanvas("bump");
+  brickMap.colorSpace = THREE.SRGBColorSpace;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(160,240),
+    new THREE.MeshStandardMaterial({ map:brickMap, bumpMap:brickBump, bumpScale:0.04,
+      color:0xdfe8ff, metalness:0.12, roughness:0.74, envMapIntensity:0.45 }));
+  ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
+
+  // distant streetlamp poles down both sides, cool moonlit heads
+  function addLamp(px, pz, flip){
+    const g = new THREE.Group();
+    const metal = new THREE.MeshStandardMaterial({ color:0x0f131b, metalness:0.6, roughness:0.5 });
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.085,3.3,10), metal); pole.position.y=1.65; pole.castShadow=true; g.add(pole);
+    const arm  = new THREE.Mesh(new THREE.BoxGeometry(0.55,0.05,0.05), metal); arm.position.set(0.26,3.22,0); g.add(arm);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.24,0.09,0.15),
+      new THREE.MeshStandardMaterial({ color:0x000000, emissive:0xcfe0ff, emissiveIntensity:2.4, toneMapped:false }));
+    head.position.set(0.5,3.16,0); g.add(head);
+    const pl = new THREE.PointLight(0xbcd4ff, 6, 11, 2); pl.position.set(0.5,3.05,0); g.add(pl);
+    g.position.set(px,0,pz); if (flip) g.rotation.y=Math.PI; scene.add(g);
+  }
+  [-20,-11,7,16].forEach(z => { addLamp(-3.7,z,false); addLamp(3.7,z,true); });
+
+  // ---- realistic pillar charger (~1.15m tall, same dark-metal style as the car) ----
+  const post = new THREE.Group();
+  const postMat = new THREE.MeshStandardMaterial({ color:0x30353d, metalness:0.5, roughness:0.5, envMapIntensity:0.9 });
+  const darkMat = new THREE.MeshStandardMaterial({ color:0x181c22, metalness:0.4, roughness:0.6 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.26,1.15,0.2), postMat);
+  body.position.y=0.575; body.castShadow=true; post.add(body);
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.06,0.24), postMat);
+  cap.position.y=1.18; cap.castShadow=true; post.add(cap);
+  // LED slots on top (like the reference)
+  for (let i=-1;i<=1;i++){ const slot=new THREE.Mesh(new THREE.PlaneGeometry(0.05,0.014),
+    new THREE.MeshStandardMaterial({ color:0x000000, emissive:0xffcf3a, emissiveIntensity:0.75, toneMapped:false }));
+    slot.rotation.y=Math.PI/2; slot.position.set(0.101,1.02,i*0.07); post.add(slot); }
+  // recessed screen on the front face (toward the car)
+  const bezel = new THREE.Mesh(new THREE.BoxGeometry(0.04,0.2,0.16), darkMat);
+  bezel.position.set(0.1,0.78,0); post.add(bezel);
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.15,0.11),
+    new THREE.MeshStandardMaterial({ color:0x1a1606, emissive:0x4a3a08, emissiveIntensity:0.5, roughness:0.3 }));
+  screen.rotation.y=Math.PI/2; screen.position.set(0.121,0.78,0); post.add(screen);
+  // RFID/charge-status light + holster nub
+  const led = new THREE.Mesh(new THREE.CircleGeometry(0.02,20),
+    new THREE.MeshStandardMaterial({ color:0x000000, emissive:0xffcf3a, emissiveIntensity:0.55, toneMapped:false }));
+  led.rotation.y=Math.PI/2; led.position.set(0.101,0.56,0); post.add(led);
+  const holster = new THREE.Mesh(new THREE.BoxGeometry(0.05,0.08,0.07), darkMat);
+  holster.position.set(0.12,0.66,0); post.add(holster);
+  post.position.set(-2.4,0,0.7); scene.add(post);
+
+  // cable from the holster, drooping to the car's charge port
+  const cablePts = [ new THREE.Vector3(-2.26,0.66,0.7), new THREE.Vector3(-1.85,0.4,0.66), new THREE.Vector3(-1.3,0.62,0.62) ];
+  const cableCurve = new THREE.CatmullRomCurve3(cablePts);
+  const cableMat = new THREE.MeshStandardMaterial({ color:0x241f08, emissive:0xffd23a, emissiveIntensity:0, roughness:0.6 });
+  const cable = new THREE.Mesh(new THREE.TubeGeometry(cableCurve,44,0.028,8), cableMat);
+  cable.visible = false; scene.add(cable);
+
+  const port = new THREE.Mesh(new THREE.CircleGeometry(0.09,24),
+    new THREE.MeshStandardMaterial({ color:0x000000, emissive:0xffd23a, emissiveIntensity:0, side:THREE.DoubleSide }));
+  port.position.copy(cablePts[2]); port.lookAt(AMBIENT_POS); port.visible = false; scene.add(port);
+
+  const pulses = [];
+  for (let i=0;i<3;i++){ const p=new THREE.Mesh(new THREE.SphereGeometry(0.06,10,10),
+    new THREE.MeshStandardMaterial({ color:0x000000, emissive:0xffe680, emissiveIntensity:1.1 }));
+    p.visible=false; scene.add(p); pulses.push({mesh:p, t:i/3}); }
+
+  // ---- flat logo image, floating in the dark, for the rest state ----
+  const logoGroup = new THREE.Group(); logoGroup.visible = false; scene.add(logoGroup);
+  const LOGO_W = 3.0; // on-screen width in world units (tweak to taste)
+  const logoMat = new THREE.MeshBasicMaterial({ transparent:true, toneMapped:false, depthWrite:false });
+  const logoPlane = new THREE.Mesh(new THREE.PlaneGeometry(LOGO_W, LOGO_W*0.35), logoMat);
+  logoGroup.add(logoPlane);
+  logoGroup.position.set(0,2.2,0);
+
+  // turn a solid (black) logo into a chrome-gradient version using its shape as a mask
+  function metallicFromImage(img){
+    const w=img.width||1000, h=img.height||400;
+    const src=document.createElement("canvas"); src.width=w; src.height=h;
+    const sctx=src.getContext("2d"); sctx.drawImage(img,0,0);
+    const sd=sctx.getImageData(0,0,w,h).data;
+    let hasAlpha=false; for(let i=3;i<sd.length;i+=4){ if(sd[i]<250){ hasAlpha=true; break; } }
+    const out=document.createElement("canvas"); out.width=w; out.height=h;
+    const octx=out.getContext("2d");
+    const g=octx.createLinearGradient(0,0,0,h); // vertical chrome ramp like the real rings
+    g.addColorStop(0.00,"#f7fbff"); g.addColorStop(0.16,"#c2cddc"); g.addColorStop(0.40,"#828c9c");
+    g.addColorStop(0.50,"#3c424b"); g.addColorStop(0.60,"#8e97a5"); g.addColorStop(0.84,"#e7eef6");
+    g.addColorStop(1.00,"#a6b1c2");
+    octx.fillStyle=g; octx.fillRect(0,0,w,h);
+    const od=octx.getImageData(0,0,w,h);
+    for(let p=0;p<w*h;p++){
+      const a = hasAlpha ? sd[p*4+3]
+        : 255-(0.299*sd[p*4]+0.587*sd[p*4+1]+0.114*sd[p*4+2]); // black shape -> opaque, white -> clear
+      od.data[p*4+3]=a;
+    }
+    octx.putImageData(od,0,0);
+    const t=new THREE.CanvasTexture(out); t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=8; return t;
+  }
+
+  new THREE.TextureLoader().load(CONFIG.LOGO_URL, tex => {
+    const img = tex.image;
+    let map;
+    try { map = metallicFromImage(img); } catch(e){ console.warn("metallic fill failed, using raw logo", e); tex.colorSpace=THREE.SRGBColorSpace; map=tex; }
+    logoMat.map = map; logoMat.needsUpdate = true;
+    // reshape the plane to the image's true aspect ratio so it never stretches
+    const ar = (img && img.width && img.height) ? img.height/img.width : 0.35;
+    logoPlane.geometry.dispose();
+    logoPlane.geometry = new THREE.PlaneGeometry(LOGO_W, LOGO_W*ar);
+  }, undefined, () => console.warn("Logo image not found at", CONFIG.LOGO_URL));
+
+  const carGroup = new THREE.Group(); scene.add(carGroup);
+  let carHeight = 1.6;
+  let tailLightMats = [], headLightMats = [];
+
+  const paintMat = () => new THREE.MeshPhysicalMaterial({
+    color:0x0a0a0d, metalness:0.9, roughness:0.34, clearcoat:1.0, clearcoatRoughness:0.06, envMapIntensity:1.1 });
+
+  const placeholder = new THREE.Mesh(new THREE.BoxGeometry(4,1.1,1.8), paintMat());
+  placeholder.position.y=0.9; placeholder.castShadow=true; carGroup.add(placeholder);
+
+  new GLTFLoader().load(CONFIG.MODEL_URL, gltf => {
+    carGroup.remove(placeholder);
+    const model = gltf.scene;
+    const guess = /body|paint|karoser|exterior|carbody|lack|coche|voiture/i;
+    const tails = [], heads = [];
+    model.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = true; o.receiveShadow = true;
+      const names = (Array.isArray(o.material)?o.material:[o.material]).map(m=>m&&m.name).join(",");
+      console.log("[model] mesh:", o.name, "| material:", names);
+      const paint = m => {
+        if (!m) return m;
+        const nm = (m.name||"").toLowerCase();
+        const tag = ((o.name||"")+" "+nm).toLowerCase();
+        const forced = CONFIG.BODY_MATERIAL_NAMES.some(n => tag.includes(n.toLowerCase()));
+        const isBody = forced || (CONFIG.BODY_MATERIAL_NAMES.length===0 && guess.test(tag));
+        if (isBody) return paintMat();
+        if (/red_light/.test(nm)) { // taillights
+          m.color && m.color.setHex(0x5a0008); m.emissive && m.emissive.setHex(0xff1a2e);
+          m.emissiveIntensity = 0.6; m.toneMapped = false; tails.push(m); return m;
+        }
+        if (/glass_light/.test(nm)) { // headlights (glow on approach)
+          m.metalness = 0.0; m.roughness = 0.05; m.envMapIntensity = 1.4;
+          m.emissive && m.emissive.setHex(0xfff4e0); m.emissiveIntensity = 0.35; m.toneMapped = false;
+          heads.push(m); return m;
+        }
+        if (/glass_w|glass11|back_light_glass|glass$/.test(nm)) {
+          m.color && m.color.setHex(0x05070c); m.metalness = 0.0; m.roughness = 0.08;
+          m.transparent = true; m.opacity = 0.55; m.envMapIntensity = 1.4; return m;
+        }
+        if (/chrome|iron/.test(nm)) { m.metalness = 1.0; m.roughness = 0.18; m.envMapIntensity = 1.5; return m; }
+        m.envMapIntensity = 1.0; return m;
+      };
+      o.material = Array.isArray(o.material) ? o.material.map(paint) : paint(o.material);
+    });
+    tailLightMats = tails; headLightMats = heads;
+    let box = new THREE.Box3().setFromObject(model);
+    model.position.sub(box.getCenter(new THREE.Vector3()));
+    box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    model.scale.setScalar(4.4 / Math.max(size.x, size.z));
+    carHeight = size.y * (4.4 / Math.max(size.x, size.z));
+    carGroup.add(model);
+    carGroup.rotation.y = CONFIG.CAR_FACING_DEG * Math.PI/180; // nose points down the road (-Z)
+    carGroup.position.set(0, carHeight/2, 0);
+    controls.target.set(0, carHeight*0.45, 0);
+    curLook.copy(controls.target);
+  }, undefined, err => {
+    console.warn("Model load failed — placeholder shown.", err);
+    controls.target.set(0, 0.9, 0); curLook.copy(controls.target);
+  });
+
+  // ---- animation + scripted camera ----
+  const clock = new THREE.Clock();
+  const tweens = [];
+  const easeIn = t => t*t*t;
+  const easeOut = t => 1-Math.pow(1-t,3);
+  const easeInOut = t => t<.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;
+  function tween(dur,upd,done,ease=easeInOut){ tweens.push({s:performance.now(),dur,upd,done,ease}); }
+
+  let charging = false, carAway = false, scriptedCam = false;
+  const curLook = new THREE.Vector3(0,0.9,0);
+  const home = () => new THREE.Vector3(0, carHeight/2, 0);
+
+  function camTo(pos, tgt, dur, done, ease=easeInOut){
+    scriptedCam = true; controls.autoRotate = false;
+    const p0 = camera.position.clone(), l0 = curLook.clone();
+    tween(dur, k => { camera.position.lerpVectors(p0,pos,k); curLook.lerpVectors(l0,tgt,k); camera.lookAt(curLook); },
+      () => done&&done(), ease);
+  }
+  function toAmbient(dur, done){
+    const tgt = new THREE.Vector3(0, carHeight*0.45, 0);
+    camTo(AMBIENT_POS.clone(), tgt, dur, () => {
+      controls.target.copy(tgt); camera.position.copy(AMBIENT_POS);
+      scriptedCam = false; controls.autoRotate = true; controls.autoRotateSpeed = 0.55;
+      done&&done();
+    });
+  }
+
+  // scene brightness: normal vs. dimmed rest state (street stays faintly visible)
+  const LIGHT_NORMAL = { key:1.7, rim:2.2, exp:1.12, fog:0.03 };
+  const LIGHT_REST   = { key:0.3, rim:0.45, exp:0.68, fog:0.052 };
+  function lightsTo(target, dur){
+    const k0=key.intensity, r0=rim.intensity, e0=renderer.toneMappingExposure, f0=scene.fog.density;
+    tween(dur, t => {
+      key.intensity = k0+(target.key-k0)*t;
+      rim.intensity = r0+(target.rim-r0)*t;
+      renderer.toneMappingExposure = e0+(target.exp-e0)*t;
+      scene.fog.density = f0+(target.fog-f0)*t;
+    }, null);
+  }
+
+  function loop(){
+    requestAnimationFrame(loop);
+    const now = performance.now(), dt = clock.getDelta();
+    for (let i=tweens.length-1;i>=0;i--){ const tw=tweens[i]; let p=(now-tw.s)/tw.dur;
+      if (p>=1){ tw.upd(1); tweens.splice(i,1); tw.done&&tw.done(); } else tw.upd(tw.ease(p)); }
+    if (charging){
+      pulses.forEach(pu => { pu.t=(pu.t+dt*0.5)%1; pu.mesh.position.copy(cableCurve.getPoint(pu.t)); pu.mesh.visible=true; });
+      cableMat.emissiveIntensity = 0.38 + Math.sin(now*0.004)*0.16;
+    } else pulses.forEach(pu=>pu.mesh.visible=false);
+    port.visible = charging;
+    port.material.emissiveIntensity = charging ? (0.5 + Math.sin(now*0.005)*0.22) : 0;
+    if (logoGroup.visible) logoGroup.position.y = 2.2 + Math.sin(now*0.001)*0.06; // gentle float
+    if (!scriptedCam) controls.update();
+    renderer.render(scene, camera);
+  }
+  loop();
+
+  addEventListener("resize", () => {
+    camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+  renderer.setSize(innerWidth, innerHeight);
+
+  const fadeEl = document.getElementById("fadeBlack");
+  return {
+    isAway: () => carAway,
+    dock(){ charging=true; cable.visible=true; cableMat.emissiveIntensity=0;
+      logoGroup.visible=false; carGroup.visible=true; carAway=false;
+      lightsTo(LIGHT_NORMAL, 600);
+      tween(1200, t => cableMat.emissiveIntensity = t*0.45, null);
+      controls.autoRotateSpeed = 0.35; },
+    setFull(){ controls.autoRotateSpeed = 0.2; },
+
+    // full/charging -> tap: camera drops behind, car drives straight into the horizon, rings fade in
+    driveAway(cb){
+      charging=false; cable.visible=false;
+      camTo(new THREE.Vector3(0,0.95,8.5), new THREE.Vector3(0,0.55,-40), 1200, () => {
+        const start = carGroup.position.clone();
+        tween(2200, t => {
+          carGroup.position.set(0, start.y, start.z - easeIn(t)*36);
+          tailLightMats.forEach(m => m.emissiveIntensity = 0.6 + t*3.4);
+          if (t>0.5) fadeEl.classList.add("on");
+        }, () => {
+          carGroup.visible=false; carGroup.position.copy(home());
+          tailLightMats.forEach(m => m.emissiveIntensity = 0.6);
+          logoGroup.visible=true; carAway=true;
+          lightsTo(LIGHT_REST, 900); // dim the scene around the floating logo
+          camera.position.set(0,2.2,6.5); curLook.set(0,2.2,0); camera.lookAt(curLook);
+          setTimeout(() => { fadeEl.classList.remove("on"); cb&&cb(); }, 250);
+        }, easeIn);
+      });
+    },
+
+    // start again from rest: headlights approach out of the dark, car parks, camera returns
+    arrive(cb){
+      fadeEl.classList.add("on");
+      setTimeout(() => {
+        logoGroup.visible=false; carGroup.visible=true;
+        carGroup.position.set(0, carHeight/2, 36);
+        camera.position.set(0,0.95,-8.5); curLook.set(0,0.55,40); camera.lookAt(curLook);
+        scriptedCam=true;
+        headLightMats.forEach(m => m.emissiveIntensity = 2.4);
+        fadeEl.classList.remove("on");
+        tween(2600, t => { carGroup.position.z = 36*(1-easeOut(t)); }, () => {
+          carGroup.position.copy(home());
+          headLightMats.forEach(m => m.emissiveIntensity = 0.35);
+          carAway=false;
+          lightsTo(LIGHT_NORMAL, 1100); // bring lights up only once parked (no entrance flash)
+          toAmbient(1100, () => cb&&cb());
+        }, t=>t);
+      }, 450);
+    },
+
+    reset(){ charging=false; cable.visible=false; carGroup.visible=true; logoGroup.visible=false;
+      carGroup.position.copy(home());
+      scriptedCam=false; controls.autoRotate=true; controls.autoRotateSpeed=0.55; }
+  };
+}
+
+function buildFallback(){
+  const car = document.getElementById("fbcar");
+  const cable = document.getElementById("fbcable");
+  const port = document.getElementById("fbport");
+  const rings = document.getElementById("fbrings");
+  const fbSvg = document.getElementById("fallback");
+  const fblogo = document.getElementById("fblogo");
+  try { fblogo.setAttribute("href", CONFIG.LOGO_URL); fblogo.setAttribute("xlink:href", CONFIG.LOGO_URL); } catch(e){}
+  const fadeEl = document.getElementById("fadeBlack");
+  let pulse = null, away = false;
+  const dim = on => { fbSvg.style.transition="filter .9s ease"; fbSvg.style.filter = on ? "brightness(0.4)" : "brightness(1)"; };
+  return {
+    isAway: () => away,
+    dock(){ rings.style.opacity=0; away=false; dim(false);
+      cable.style.transition="opacity .8s ease"; cable.style.opacity=1;
+      port.style.transition="opacity .8s ease"; port.style.opacity=1;
+      let on=true; pulse=setInterval(()=>{ cable.style.stroke = on?"#FFE680":"#F5C518"; on=!on; },500); },
+    setFull(){ if(pulse){clearInterval(pulse);pulse=null;} cable.style.stroke="#F5C518"; },
+    driveAway(cb){ if(pulse){clearInterval(pulse);pulse=null;}
+      cable.style.opacity=0; port.style.opacity=0;
+      car.style.transformOrigin="200px 210px";
+      car.style.transition="transform 2.4s cubic-bezier(.45,0,.9,.5), opacity 2.4s ease";
+      car.style.transform="translate(0px,-46px) scale(.12)"; car.style.opacity="0"; // shrink into the distance
+      setTimeout(()=>fadeEl.classList.add("on"),1400);
+      setTimeout(()=>{ car.style.transition="none"; car.style.transform="translate(0px,-46px) scale(.12)"; car.style.opacity="0";
+        rings.style.transition="opacity .8s ease"; rings.style.opacity=1; away=true; dim(true); // logo floats, scene dims
+        fadeEl.classList.remove("on"); cb&&cb(); },2800); },
+    arrive(cb){ fadeEl.classList.add("on");
+      setTimeout(()=>{ rings.style.opacity=0; dim(false);
+        car.style.transition="transform 2.4s cubic-bezier(.2,0,.4,1), opacity 1.2s ease";
+        car.style.transform="none"; car.style.opacity="1"; away=false;
+        fadeEl.classList.remove("on");
+        setTimeout(()=>cb&&cb(), 2400); }, 450); },
+    reset(){ if(pulse){clearInterval(pulse);pulse=null;} cable.style.opacity=0; port.style.opacity=0;
+      rings.style.opacity=0; away=false; dim(false);
+      car.style.transition="none"; car.style.transform="none"; car.style.opacity="1"; }
+  };
+}
+
+/* ---- notifications: service worker + real web push ---- */
+let swReg = null;
+async function initPush(){
+  if (!("serviceWorker" in navigator)) return;
+  try { swReg = await navigator.serviceWorker.register("./sw.js"); }
+  catch(e){ console.warn("SW register failed (needs https or localhost):", e); }
+}
+initPush();
+
+function notifyMove(){
+  const title = "Verplaats de auto 🚗";
+  const opts = { body:"De Q3 is klaar met laden. Tik de sticker als je 'm verplaatst hebt.",
+                 tag:"lw-done", vibrate:[300,120,300], icon:"./icon-192.png", badge:"./icon-192.png" };
+  try {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    if (swReg) swReg.showNotification(title, opts); else new Notification(title, opts);
+  } catch(e){}
+}
+function askNotif(){ try { if("Notification"in window && Notification.permission==="default") Notification.requestPermission(); } catch(e){} }
+
+function urlB64ToUint8Array(s){
+  const pad = "=".repeat((4 - s.length % 4) % 4);
+  const b64 = (s + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64); return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+async function ensurePushSub(){
+  try {
+    if (!("Notification" in window) || !swReg || !swReg.pushManager) return null;
+    if (Notification.permission === "default") await Notification.requestPermission();
+    if (Notification.permission !== "granted") return null;
+    if (!CONFIG.VAPID_PUBLIC_KEY || CONFIG.VAPID_PUBLIC_KEY.startsWith("PASTE")) {
+      console.warn("VAPID_PUBLIC_KEY not set — background push disabled, in-app reminder still works.");
+      return null;
+    }
+    return await swReg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8Array(CONFIG.VAPID_PUBLIC_KEY)
+    });
+  } catch(e){ console.warn("Push subscribe failed:", e); return null; }
+}
+async function scheduleServerReminder(fireAtMs){
+  const sub = await ensurePushSub();
+  if (!sub) return;
+  try {
+    await fetch("/api/schedule", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ fireAt: fireAtMs, sub }) });
+  } catch(e){ console.warn("Schedule call failed (fine on localhost):", e); }
+}
+async function cancelServerReminder(){
+  try { await fetch("/api/cancel", { method:"POST" }); } catch(e){}
+}
+
+/* ---- app state <-> UI ---- */
+const readout = document.getElementById("readout");
+const panel = document.getElementById("panel");
+document.getElementById("credit").textContent = CONFIG.CREDIT;
+let notifiedDone = false;
+let pendingPct = lastPct();
+
+function setAccent(p){
+  bodyEl.classList.toggle("charging", p==="charging");
+  bodyEl.classList.toggle("done", p==="done");
+  document.documentElement.style.setProperty("--accent", p==="done" ? "var(--amber)" : "var(--mint)");
+}
+
+function startCharge(cur){
+  const tgt = targetPct(), dur = computeDuration(cur, tgt);
+  store.set(K.LASTPCT, cur);
+  store.set(K.SES, { start:Date.now(), durationMin:dur, currentPct:cur, targetPct:tgt });
+  askNotif(); scheduleServerReminder(Date.now()+dur*60000);
+  notifiedDone = false;
+  if (stage && stage.isAway && stage.isAway()) stage.arrive(() => stage.dock()); // drive back in, then dock
+  else stage && stage.dock();
+  render();
+}
+function stopAndMove(){
+  store.del(K.SES); cancelServerReminder(); notifiedDone=false;
+  bodyEl.classList.remove("charging","done");
+  renderChrome("idle");
+  if (stage) stage.driveAway(() => render()); else render();
+}
+function primaryFromNfc(){ if (phase()!=="idle") stopAndMove(); }
+
+function renderChrome(p){
+  setAccent(p);
+  if (p==="idle"){
+    readout.innerHTML = "";
+    panel.innerHTML =
+      '<div class="dial-label"><span>Huidige lading</span><b id="pctB">'+pendingPct+'%</b></div>'+
+      '<input type="range" id="pct" min="0" max="100" step="5" value="'+pendingPct+'">'+
+      '<button class="action" id="go">Start opladen</button>';
+    const rng=document.getElementById("pct"), b=document.getElementById("pctB");
+    rng.addEventListener("input", ()=>{ pendingPct=+rng.value; b.textContent=pendingPct+"%"; });
+    document.getElementById("go").addEventListener("click", ()=>startCharge(+rng.value));
+    return;
+  }
+  const s = session();
+  if (p==="charging"){
+    const fullAt = s.start + s.durationMin*60000;
+    readout.innerHTML = '<div class="state-word">aan het laden</div><div class="big-time">'+remainStr(fullAt-Date.now())+'</div>';
+    panel.innerHTML =
+      '<div class="full-line" style="text-align:center;margin-bottom:16px">Geschat vol om <b>'+clock(fullAt)+'</b>'+
+        '<span class="sub">Gestart op '+s.currentPct+'% · om '+clock(s.start)+'</span></div>'+
+      '<button class="action" id="mv">Auto verplaatst</button>';
+    document.getElementById("mv").addEventListener("click", stopAndMove);
+    return;
+  }
+  const fullAt = s.start + s.durationMin*60000;
+  readout.innerHTML = '<div class="move-head"><h1>Verplaats de auto</h1><p>Vol sinds '+clock(fullAt)+' — je betaalt nu voor stilstaan.</p></div>';
+  panel.innerHTML = '<button class="action" id="mv">Auto verplaatst ✓</button>';
+  document.getElementById("mv").addEventListener("click", stopAndMove);
+}
+
+function render(){
+  const p = phase();
+  renderChrome(p);
+  if (p==="done" && !notifiedDone){ notifiedDone=true; notifyMove(); stage && stage.setFull(); }
+}
+
+/* ---- settings ---- */
+const sheet = document.getElementById("sheet");
+const fullValEl = document.getElementById("fullVal");
+const targetValEl = document.getElementById("targetVal");
+function refreshSettings(){ fullValEl.textContent = fmtHM(fullMin()); targetValEl.textContent = targetPct()+"%"; }
+document.getElementById("openSettings").addEventListener("click", ()=>{ refreshSettings(); sheet.classList.add("open"); });
+document.getElementById("closeSettings").addEventListener("click", ()=>{ sheet.classList.remove("open"); render(); });
+sheet.addEventListener("click", e=>{ if(e.target===sheet){ sheet.classList.remove("open"); render(); } });
+document.querySelectorAll(".step-btn").forEach(btn => btn.addEventListener("click", ()=>{
+  const step=+btn.dataset.step;
+  if (btn.dataset.k==="full"){ let v=fullMin()+step; v=Math.max(60,Math.min(600,v)); store.set(K.FULL,v); }
+  else { let v=targetPct()+step; v=Math.max(20,Math.min(100,v)); store.set(K.TARGET,v); }
+  refreshSettings();
+}));
+
+/* ---- NFC ?tap=1 ---- */
+(function(){ const q=new URLSearchParams(location.search);
+  if (q.get("tap")==="1"){ primaryFromNfc(); history.replaceState(null,"",location.pathname); } })();
+
+/* ---- boot ---- */
+initStage().then(() => { if (phase()==="charging" && stage) stage.dock(); });
+render();
+setInterval(()=>{ if(!sheet.classList.contains("open")) render(); }, 1000);
+</script>
+</body>
+</html>

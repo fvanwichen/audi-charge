@@ -1,0 +1,11 @@
+Model Information:
+* title:	AUDI Q3 SPORTBACK
+* source:	https://sketchfab.com/3d-models/audi-q3-sportback-a0159b9bee094c2d8f9b9d5694c94f45
+* author:	3DCars4U (https://sketchfab.com/3dcarsforyou)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "AUDI Q3 SPORTBACK" (https://sketchfab.com/3d-models/audi-q3-sportback-a0159b9bee094c2d8f9b9d5694c94f45) by 3DCars4U (https://sketchfab.com/3dcarsforyou) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
