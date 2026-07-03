@@ -688,18 +688,21 @@ async function ensurePushSub(){
       console.warn("VAPID_PUBLIC_KEY not set — background push disabled, in-app reminder still works.");
       return null;
     }
-    return await swReg.pushManager.subscribe({
+    const sub = await swReg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlB64ToUint8Array(CONFIG.VAPID_PUBLIC_KEY)
     });
+    // keep it stored server-side so headless NFC taps can schedule pushes
+    try { fetch("/api/subscribe", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ sub }) }); } catch(e){}
+    return sub;
   } catch(e){ console.warn("Push subscribe failed:", e); return null; }
 }
 async function scheduleServerReminder(fireAtMs){
   const sub = await ensurePushSub();
-  if (!sub) return;
   try {
     await fetch("/api/schedule", { method:"POST", headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ fireAt: fireAtMs, sub }) });
+      body: JSON.stringify({ fireAt: fireAtMs, session: session(), sub }) });
   } catch(e){ console.warn("Schedule call failed (fine on localhost):", e); }
 }
 async function cancelServerReminder(){
@@ -792,8 +795,31 @@ document.querySelectorAll(".step-btn").forEach(btn => btn.addEventListener("clic
 (function(){ const q=new URLSearchParams(location.search);
   if (q.get("tap")==="1"){ primaryFromNfc(); history.replaceState(null,"",location.pathname); } })();
 
+/* ---- server state sync (server is the source of truth; NFC taps change it headlessly) ---- */
+async function syncFromServer(){
+  try {
+    const r = await fetch("/api/state", { cache: "no-store" });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.session) store.set(K.SES, d.session); else store.del(K.SES);
+    if (d.phase === "done") notifiedDone = true; // server push already covered it; avoid a duplicate local ping
+    if (stage) {
+      if (d.phase === "idle") stage.reset();
+      else if (!stage.isAway || !stage.isAway()) stage.dock();
+    }
+    render();
+  } catch(e){ /* offline/localhost: local state stands */ }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") syncFromServer();
+});
+
 /* ---- boot ---- */
-initStage().then(() => { if (phase()==="charging" && stage) stage.dock(); });
+initStage().then(async () => {
+  await syncFromServer();
+  if (phase()!=="idle" && stage) stage.dock();
+  render();
+});
 render();
 setInterval(()=>{ if(!sheet.classList.contains("open")) render(); }, 1000);
 </script>

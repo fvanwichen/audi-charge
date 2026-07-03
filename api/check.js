@@ -7,13 +7,20 @@ module.exports = async (req, res) => {
     return res.status(401).json({ error: "bad key" });
   }
 
-  const raw = await redis.get("laadwacht:reminder");
+  const raw = await redis.get("laadwacht:session");
   if (!raw) return res.json({ ok: true, due: false });
+  const s = typeof raw === "string" ? JSON.parse(raw) : raw;
 
-  const r = typeof raw === "string" ? JSON.parse(raw) : raw;
-  if (Date.now() < r.fireAt) {
-    return res.json({ ok: true, due: false, minutesLeft: Math.ceil((r.fireAt - Date.now()) / 60000) });
+  if (s.notified) return res.json({ ok: true, due: false, phase: "done" });
+  if (Date.now() < s.fireAt) {
+    return res.json({ ok: true, due: false, minutesLeft: Math.ceil((s.fireAt - Date.now()) / 60000) });
   }
+
+  const rawSub = await redis.get("laadwacht:sub");
+  if (!rawSub) {
+    return res.json({ ok: true, due: true, sent: false, error: "no stored subscription" });
+  }
+  const sub = typeof rawSub === "string" ? JSON.parse(rawSub) : rawSub;
 
   webpush.setVapidDetails(
     process.env.VAPID_SUBJECT,
@@ -23,7 +30,7 @@ module.exports = async (req, res) => {
 
   let sent = false;
   try {
-    await webpush.sendNotification(r.sub, JSON.stringify({
+    await webpush.sendNotification(sub, JSON.stringify({
       title: "Verplaats de auto 🚗",
       body: "De Q3 is klaar met laden. Tik de sticker wanneer je 'm verplaatst hebt."
     }));
@@ -32,6 +39,7 @@ module.exports = async (req, res) => {
     console.error("push send failed:", e.statusCode, e.body || e.message);
   }
 
-  await redis.del("laadwacht:reminder");
+  s.notified = true; // keep session; app shows 'done' until you tap/stop
+  await redis.set("laadwacht:session", JSON.stringify(s));
   res.json({ ok: true, due: true, sent });
 };

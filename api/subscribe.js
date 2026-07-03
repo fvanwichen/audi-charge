@@ -3,7 +3,8 @@ const redis = Redis.fromEnv();
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
-  await redis.del("laadwacht:session");
-  await redis.del("laadwacht:reminder"); // legacy cleanup
+  const { sub } = req.body || {};
+  if (!sub || !sub.endpoint) return res.status(400).json({ error: "sub required" });
+  await redis.set("laadwacht:sub", JSON.stringify(sub));
   res.json({ ok: true });
 };
