@@ -1,3 +1,4 @@
+const webpush = require("web-push");
 const { Redis } = require("@upstash/redis");
 const redis = Redis.fromEnv();
 
@@ -7,6 +8,24 @@ const TARGET_PCT = 100;
 
 const fmtNL = (ms) => new Date(ms).toLocaleTimeString("nl-NL",
   { timeZone: "Europe/Amsterdam", hour: "2-digit", minute: "2-digit" });
+
+async function sendPush(title, body, sticky) {
+  const rawSub = await redis.get("laadwacht:sub");
+  if (!rawSub) return false;
+  const sub = typeof rawSub === "string" ? JSON.parse(rawSub) : rawSub;
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT,
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+  try {
+    await webpush.sendNotification(sub, JSON.stringify({ title, body, sticky: !!sticky }));
+    return true;
+  } catch (e) {
+    console.error("tap push failed:", e.statusCode, e.body || e.message);
+    return false;
+  }
+}
 
 module.exports = async (req, res) => {
   if ((req.query.key || "") !== process.env.CRON_SECRET) {
@@ -21,8 +40,9 @@ module.exports = async (req, res) => {
     await redis.del("laadwacht:session");
     await redis.del("laadwacht:reminder"); // legacy cleanup
     const wasDone = s.notified || Date.now() >= s.fireAt;
-    return res.json({ ok: true, phase: "idle",
-      message: wasDone ? "Verplaatst — netjes op tijd ✅" : "Sessie gestopt 🔌" });
+    const message = wasDone ? "Verplaatst — netjes op tijd ✅" : "Sessie gestopt 🔌";
+    const sent = await sendPush(message, "Tik voor het dashboard.", false);
+    return res.json({ ok: true, phase: "idle", message, pushSent: sent });
   }
 
   // Tap while idle -> start charging
@@ -34,6 +54,7 @@ module.exports = async (req, res) => {
   const session = { start, durationMin, currentPct: pct, targetPct: TARGET_PCT, fireAt, notified: false };
   await redis.set("laadwacht:session", JSON.stringify(session));
 
-  res.json({ ok: true, phase: "charging",
-    message: `Gestart op ${pct}% — vol om ${fmtNL(fireAt)} ⚡` });
+  const message = `Gestart op ${pct}% — vol om ${fmtNL(fireAt)} ⚡`;
+  const sent = await sendPush(message, "Tik voor het dashboard.", false);
+  res.json({ ok: true, phase: "charging", message, pushSent: sent });
 };

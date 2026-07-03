@@ -801,10 +801,20 @@ async function syncFromServer(){
     const r = await fetch("/api/state", { cache: "no-store" });
     if (!r.ok) return;
     const d = await r.json();
+    const prevPhase = phase(); // local view before adopting server truth
     if (d.session) store.set(K.SES, d.session); else store.del(K.SES);
     if (d.phase === "done") notifiedDone = true; // server push already covered it; avoid a duplicate local ping
     if (stage) {
-      if (d.phase === "idle") stage.reset();
+      if (d.phase === "idle") {
+        if (prevPhase !== "idle" && (!stage.isAway || !stage.isAway())) {
+          // stopped via NFC tap while we weren't looking -> play the send-off
+          bodyEl.classList.remove("charging","done");
+          renderChrome("idle");
+          stage.driveAway(() => render());
+          return;
+        }
+        if (!stage.isAway || !stage.isAway()) stage.reset();
+      }
       else if (!stage.isAway || !stage.isAway()) stage.dock();
     }
     render();

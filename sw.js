@@ -6,14 +6,15 @@ self.addEventListener("push", (e) => {
   let data = {};
   try { data = e.data ? e.data.json() : {}; } catch (_) {}
   const title = data.title || "Verplaats de auto 🚗";
+  const sticky = data.sticky !== false; // default sticky for the move-the-car alert
   e.waitUntil(self.registration.showNotification(title, {
     body: data.body || "De Q3 is klaar met laden. Tik de sticker wanneer je 'm verplaatst hebt.",
-    tag: "laadwacht-done",
+    tag: sticky ? "laadwacht-done" : "laadwacht-info",
     renotify: true,
-    vibrate: [300, 120, 300, 120, 300],
+    vibrate: sticky ? [300, 120, 300, 120, 300] : [150],
     icon: "./icon-192.png",
     badge: "./icon-192.png",
-    requireInteraction: true
+    requireInteraction: sticky
   }));
 });
 
